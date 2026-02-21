@@ -69,115 +69,141 @@
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let offset = { x: 0, y: 0 };
+let scale = 1;
+
+let isPanning = false;
+let startPan = { x: 0, y: 0 };
+
+let shapes = [];
 let drawing = false;
-let startX, startY;
-let tool = "line";
+let startWorld = { x: 0, y: 0 };
 
-function setTool(t) {
-  tool = t;
-}
-
-function getPosition(e) {
-  const rect = canvas.getBoundingClientRect();
-  if (e.touches) {
+// Convert Screen → World
+function toWorld(x, y) {
     return {
-      x: e.touches[0].clientX - rect.left,
-      y: e.touches[0].clientY - rect.top
+        x: (x / scale) + offset.x,
+        y: (y / scale) + offset.y
     };
-  }
-  return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
-  };
 }
 
-canvas.addEventListener("mousedown", startDraw);
-canvas.addEventListener("mousemove", draw);
-canvas.addEventListener("mouseup", stopDraw);
-
-canvas.addEventListener("touchstart", startDraw);
-canvas.addEventListener("touchmove", draw);
-canvas.addEventListener("touchend", stopDraw);
-
-function startDraw(e) {
-  drawing = true;
-  const pos = getPosition(e);
-  startX = pos.x;
-  startY = pos.y;
+// Convert World → Screen
+function toScreen(x, y) {
+    return {
+        x: (x - offset.x) * scale,
+        y: (y - offset.y) * scale
+    };
 }
 
-function draw(e) {
-  if (!drawing) return;
+function drawGrid() {
+    const gridSize = 100;
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let left = offset.x;
+    let top = offset.y;
+    let right = offset.x + canvas.width / scale;
+    let bottom = offset.y + canvas.height / scale;
 
-  const pos = getPosition(e);
-  ctx.strokeStyle = "cyan";
-  ctx.lineWidth = 2;
+    for (let x = Math.floor(left / gridSize) * gridSize; x < right; x += gridSize) {
+        let screen = toScreen(x, 0);
+        ctx.beginPath();
+        ctx.moveTo(screen.x, 0);
+        ctx.lineTo(screen.x, canvas.height);
+        ctx.stroke();
+    }
 
-  if (tool === "line") {
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-  }
-
-  if (tool === "rect") {
-    ctx.strokeRect(startX, startY, pos.x - startX, pos.y - startY);
-  }
-
-  if (tool === "circle") {
-    const radius = Math.sqrt(
-      Math.pow(pos.x - startX, 2) +
-      Math.pow(pos.y - startY, 2)
-    );
-    ctx.beginPath();
-    ctx.arc(startX, startY, radius, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+    for (let y = Math.floor(top / gridSize) * gridSize; y < bottom; y += gridSize) {
+        let screen = toScreen(0, y);
+        ctx.beginPath();
+        ctx.moveTo(0, screen.y);
+        ctx.lineTo(canvas.width, screen.y);
+        ctx.stroke();
+    }
 }
 
-function stopDraw() {
-  drawing = false;
+function drawShapes() {
+    ctx.strokeStyle = "white";
+    shapes.forEach(s => {
+        let p = toScreen(s.x, s.y);
+        ctx.strokeRect(p.x, p.y, s.w * scale, s.h * scale);
+    });
 }
 
-function clearCanvas() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function redraw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawGrid();
+    drawShapes();
 }
 
-function saveProject() {
-  const data = canvas.toDataURL();
-  const link = document.createElement("a");
-  link.download = "prcad_design.png";
-  link.href = data;
-  link.click();
-}
-function scaleLast() {
-  if (shapes.length === 0) return;
+canvas.addEventListener("mousedown", e => {
+    if (e.button === 1) {
+        isPanning = true;
+        startPan.x = e.clientX;
+        startPan.y = e.clientY;
+    } else {
+        drawing = true;
+        startWorld = toWorld(e.clientX, e.clientY);
+    }
+});
 
-  const factor = parseFloat(prompt("Enter Scale Factor (example: 2 = double size):"));
+canvas.addEventListener("mousemove", e => {
+    if (isPanning) {
+        offset.x -= (e.clientX - startPan.x) / scale;
+        offset.y -= (e.clientY - startPan.y) / scale;
+        startPan.x = e.clientX;
+        startPan.y = e.clientY;
+        redraw();
+    }
 
-  if (!factor) return;
+    if (drawing) {
+        redraw();
+        let current = toWorld(e.clientX, e.clientY);
+        let p = toScreen(startWorld.x, startWorld.y);
+        ctx.strokeStyle = "yellow";
+        ctx.strokeRect(
+            p.x,
+            p.y,
+            (current.x - startWorld.x) * scale,
+            (current.y - startWorld.y) * scale
+        );
+    }
+});
 
-  const shape = shapes[shapes.length - 1];
+canvas.addEventListener("mouseup", e => {
+    if (isPanning) isPanning = false;
 
-  if (shape.type === "rect") {
-    shape.w *= factor;
-    shape.h *= factor;
-  }
+    if (drawing) {
+        drawing = false;
+        let end = toWorld(e.clientX, e.clientY);
+        shapes.push({
+            x: startWorld.x,
+            y: startWorld.y,
+            w: end.x - startWorld.x,
+            h: end.y - startWorld.y
+        });
+        redraw();
+    }
+});
 
-  if (shape.type === "circle") {
-    shape.r *= factor;
-  }
+canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    const zoom = 1.1;
+    const mouseWorld = toWorld(e.clientX, e.clientY);
 
-  if (shape.type === "line") {
-    shape.x2 = shape.x1 + (shape.x2 - shape.x1) * factor;
-    shape.y2 = shape.y1 + (shape.y2 - shape.y1) * factor;
-  }
+    if (e.deltaY < 0) scale *= zoom;
+    else scale /= zoom;
 
-  redraw();
-}
-}
+    offset.x = mouseWorld.x - (e.clientX / scale);
+    offset.y = mouseWorld.y - (e.clientY / scale);
+
+    redraw();
+});
+
+redraw();
 </script>
 
 </body>
