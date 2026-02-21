@@ -86,14 +86,10 @@ let gridSize = 25;
 let isPanning = false;
 let panStart = null;
 
-/* ============================
-   TOOL
-============================ */
+/* ================= TOOL ================= */
 function setTool(t){ tool = t; }
 
-/* ============================
-   COORDINATE SYSTEM
-============================ */
+/* ================= COORDINATES ================= */
 function toWorld(x,y){
   return {
     x:(x/scale)+offset.x,
@@ -112,9 +108,7 @@ function snap(v){
   return Math.round(v/gridSize)*gridSize;
 }
 
-/* ============================
-   GRID
-============================ */
+/* ================= GRID ================= */
 function drawGrid(){
   ctx.strokeStyle="#111";
   ctx.lineWidth=1;
@@ -141,9 +135,7 @@ function drawGrid(){
   }
 }
 
-/* ============================
-   DRAW SHAPES
-============================ */
+/* ================= DRAW SHAPES ================= */
 function drawShape(s,color="cyan"){
   ctx.strokeStyle=color;
   ctx.lineWidth=2;
@@ -177,9 +169,7 @@ function redraw(){
   if(preview) drawShape(preview,"yellow");
 }
 
-/* ============================
-   EVENTS
-============================ */
+/* ================= EVENTS ================= */
 canvas.addEventListener("mousedown",startDraw);
 canvas.addEventListener("mousemove",moveDraw);
 canvas.addEventListener("mouseup",endDraw);
@@ -196,22 +186,21 @@ function getMouse(e){
 
 function startDraw(e){
 
-  if(e.button===2){   // Right click = pan
+  if(e.button===2){
     isPanning=true;
     panStart=getMouse(e);
     return;
   }
 
+  let m=getMouse(e);
+  let w=toWorld(m.x,m.y);
+
   if(tool==="trim"){
-    let m=getMouse(e);
-    let w=toWorld(m.x,m.y);
-    trimAt(w.x,w.y);
+    trimSegment(w.x,w.y);
     return;
   }
 
   drawing=true;
-  let m=getMouse(e);
-  let w=toWorld(m.x,m.y);
   startPoint={
     x:snap(w.x),
     y:snap(w.y)
@@ -237,45 +226,23 @@ function moveDraw(e){
   w.y=snap(w.y);
 
   if(tool==="line"){
-    preview={
-      type:"line",
-      x1:startPoint.x,
-      y1:startPoint.y,
-      x2:w.x,
-      y2:w.y
-    };
+    preview={type:"line",x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:w.y};
   }
 
   if(tool==="rect"){
-    preview={
-      type:"rect",
-      x1:startPoint.x,
-      y1:startPoint.y,
-      w:w.x-startPoint.x,
-      h:w.y-startPoint.y
-    };
+    preview={type:"rect",x1:startPoint.x,y1:startPoint.y,w:w.x-startPoint.x,h:w.y-startPoint.y};
   }
 
   if(tool==="circle"){
-    let r=Math.sqrt(
-      Math.pow(w.x-startPoint.x,2)+
-      Math.pow(w.y-startPoint.y,2)
-    );
-
-    preview={
-      type:"circle",
-      x1:startPoint.x,
-      y1:startPoint.y,
-      r:r
-    };
+    let r=Math.hypot(w.x-startPoint.x,w.y-startPoint.y);
+    preview={type:"circle",x1:startPoint.x,y1:startPoint.y,r:r};
   }
 
   redraw();
 }
 
-function endDraw(e){
+function endDraw(){
   if(isPanning){ isPanning=false; return; }
-
   if(!drawing) return;
   drawing=false;
 
@@ -284,9 +251,7 @@ function endDraw(e){
   redraw();
 }
 
-/* ============================
-   ZOOM
-============================ */
+/* ================= ZOOM ================= */
 function zoom(e){
   e.preventDefault();
   const zoomFactor=1.1;
@@ -301,85 +266,100 @@ function zoom(e){
   redraw();
 }
 
-/* ============================
-   TRIM
-============================ */
-function trimSegment(mouseX, mouseY) {
+/* ================= TRIM (SMART SEGMENT) ================= */
+function trimSegment(mouseX, mouseY){
 
-    const threshold = 6;
+  for(let i=0;i<shapes.length;i++){
 
-    for (let i = 0; i < shapes.length; i++) {
+    let shape=shapes[i];
+    if(shape.type!=="line") continue;
 
-        let shape = shapes[i];
+    let intersections=[];
 
-        if (shape.type !== "line") continue;
-
-        // Collect intersection points
-        let intersections = [];
-
-        for (let j = 0; j < shapes.length; j++) {
-            if (i === j) continue;
-
-            let other = shapes[j];
-            if (other.type !== "line") continue;
-
-            let pt = lineIntersection(shape, other);
-            if (pt) intersections.push(pt);
-        }
-
-        // Add start & end points
-        intersections.push({x: shape.x1, y: shape.y1});
-        intersections.push({x: shape.x2, y: shape.y2});
-
-        // Sort points along line
-        intersections.sort((a, b) => {
-            return distance(shape.x1, shape.y1, a.x, a.y) -
-                   distance(shape.x1, shape.y1, b.x, b.y);
-        });
-
-        // Check each segment
-        for (let k = 0; k < intersections.length - 1; k++) {
-
-            let p1 = intersections[k];
-            let p2 = intersections[k + 1];
-
-            if (pointNearLine(mouseX, mouseY, p1.x, p1.y, p2.x, p2.y)) {
-
-                // Remove original line
-                shapes.splice(i, 1);
-
-                // Add first part if valid
-                if (distance(shape.x1, shape.y1, p1.x, p1.y) > 1) {
-                    shapes.push({
-                        type: "line",
-                        x1: shape.x1,
-                        y1: shape.y1,
-                        x2: p1.x,
-                        y2: p1.y
-                    });
-                }
-
-                // Add second part if valid
-                if (distance(p2.x, p2.y, shape.x2, shape.y2) > 1) {
-                    shapes.push({
-                        type: "line",
-                        x1: p2.x,
-                        y1: p2.y,
-                        x2: shape.x2,
-                        y2: shape.y2
-                    });
-                }
-
-                redraw();
-                return;
-            }
-        }
+    for(let j=0;j<shapes.length;j++){
+      if(i===j) continue;
+      let other=shapes[j];
+      if(other.type!=="line") continue;
+      let pt=lineIntersection(shape,other);
+      if(pt) intersections.push(pt);
     }
+
+    intersections.push({x:shape.x1,y:shape.y1});
+    intersections.push({x:shape.x2,y:shape.y2});
+
+    intersections.sort((a,b)=>
+      distance(shape.x1,shape.y1,a.x,a.y)-
+      distance(shape.x1,shape.y1,b.x,b.y)
+    );
+
+    for(let k=0;k<intersections.length-1;k++){
+
+      let p1=intersections[k];
+      let p2=intersections[k+1];
+
+      if(pointNearLine(mouseX,mouseY,p1.x,p1.y,p2.x,p2.y)){
+
+        shapes.splice(i,1);
+
+        if(distance(shape.x1,shape.y1,p1.x,p1.y)>1)
+          shapes.push({type:"line",x1:shape.x1,y1:shape.y1,x2:p1.x,y2:p1.y});
+
+        if(distance(p2.x,p2.y,shape.x2,shape.y2)>1)
+          shapes.push({type:"line",x1:p2.x,y1:p2.y,x2:shape.x2,y2:shape.y2});
+
+        redraw();
+        return;
+      }
+    }
+  }
 }
 
-/* ============================
-   SAVE / CLEAR
-============================ */
+/* ================= MATH HELPERS ================= */
+function distance(x1,y1,x2,y2){
+  return Math.hypot(x2-x1,y2-y1);
+}
+
+function pointNearLine(mx,my,x1,y1,x2,y2){
+
+  const threshold=8;
+
+  let A=mx-x1;
+  let B=my-y1;
+  let C=x2-x1;
+  let D=y2-y1;
+
+  let dot=A*C+B*D;
+  let len=C*C+D*D;
+  let param=dot/len;
+
+  if(param<0||param>1) return false;
+
+  let xx=x1+param*C;
+  let yy=y1+param*D;
+
+  return distance(mx,my,xx,yy)<threshold/scale;
+}
+
+function lineIntersection(l1,l2){
+
+  let x1=l1.x1,y1=l1.y1,x2=l1.x2,y2=l1.y2;
+  let x3=l2.x1,y3=l2.y1,x4=l2.x2,y4=l2.y2;
+
+  let denom=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
+  if(denom===0) return null;
+
+  let px=((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4))/denom;
+  let py=((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4))/denom;
+
+  if(px<Math.min(x1,x2)-1||px>Math.max(x1,x2)+1) return null;
+  if(px<Math.min(x3,x4)-1||px>Math.max(x3,x4)+1) return null;
+  if(py<Math.min(y1,y2)-1||py>Math.max(y1,y2)+1) return null;
+  if(py<Math.min(y3,y4)-1||py>Math.max(y3,y4)+1) return null;
+
+  return {x:px,y:py};
+}
+
+/* ================= SAVE / LOAD ================= */
 function saveProject(){
   localStorage.setItem("prcad_project",JSON.stringify(shapes));
   alert("Project Saved");
@@ -390,30 +370,10 @@ function clearCanvas(){
   redraw();
 }
 
+let saved=localStorage.getItem("prcad_project");
+if(saved) shapes=JSON.parse(saved);
+
 redraw();
-
- function lineIntersection(l1, l2) {
-
-    let x1 = l1.x1, y1 = l1.y1;
-    let x2 = l1.x2, y2 = l1.y2;
-    let x3 = l2.x1, y3 = l2.y1;
-    let x4 = l2.x2, y4 = l2.y2;
-
-    let denom = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4);
-    if (denom === 0) return null;
-
-    let px = ((x1*y2 - y1*x2)*(x3-x4) - (x1-x2)*(x3*y4 - y3*x4)) / denom;
-    let py = ((x1*y2 - y1*x2)*(y3-y4) - (y1-y2)*(x3*y4 - y3*x4)) / denom;
-
-    if (
-        px < Math.min(x1,x2)-1 || px > Math.max(x1,x2)+1 ||
-        px < Math.min(x3,x4)-1 || px > Math.max(x3,x4)+1 ||
-        py < Math.min(y1,y2)-1 || py > Math.max(y1,y2)+1 ||
-        py < Math.min(y3,y4)-1 || py > Math.max(y3,y4)+1
-    ) return null;
-
-    return {x: px, y: py};
-} 
 </script>
 
 </body>
