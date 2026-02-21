@@ -28,6 +28,7 @@ header{
   gap:8px;
   justify-content:center;
   flex-wrap:wrap;
+  align-items:center;
 }
 
 button{
@@ -41,6 +42,13 @@ button{
 button:hover{
   background:cyan;
   color:black;
+}
+
+input[type="color"]{
+  width:40px;
+  height:30px;
+  border:none;
+  cursor:pointer;
 }
 
 canvas{
@@ -60,6 +68,10 @@ canvas{
   <button onclick="setTool('rect')">Rectangle</button>
   <button onclick="setTool('circle')">Circle</button>
   <button onclick="setTool('trim')">Trim</button>
+
+  <label style="color:cyan;">Color:</label>
+  <input type="color" id="colorPicker" value="#00ffff">
+
   <button onclick="clearCanvas()">Clear</button>
   <button onclick="saveProject()">Save</button>
 </div>
@@ -69,12 +81,18 @@ canvas{
 <script>
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const colorPicker = document.getElementById("colorPicker");
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight - 90;
 
 /* ================= ENGINE STORAGE ================= */
-let edges = [];   // universal storage
+let edges = [];
+let currentColor = colorPicker.value;
+
+colorPicker.addEventListener("input",()=>{
+  currentColor = colorPicker.value;
+});
 
 /* ================= STATE ================= */
 let tool = "line";
@@ -130,9 +148,9 @@ function drawGrid(){
   }
 }
 
-/* ================= DRAW EDGES ================= */
-function drawEdge(e,color="cyan"){
-  ctx.strokeStyle=color;
+/* ================= DRAW ================= */
+function drawEdge(e){
+  ctx.strokeStyle=e.color;
   ctx.lineWidth=2;
   let p1=toScreen(e.x1,e.y1);
   let p2=toScreen(e.x2,e.y2);
@@ -146,7 +164,7 @@ function redraw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   drawGrid();
   edges.forEach(e=>drawEdge(e));
-  previewEdges.forEach(e=>drawEdge(e,"yellow"));
+  previewEdges.forEach(e=>drawEdge(e));
 }
 
 /* ================= EVENTS ================= */
@@ -201,14 +219,14 @@ function moveDraw(e){
   w.y=snap(w.y);
 
   if(tool==="line"){
-    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:w.y});
+    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:w.y,color:currentColor});
   }
 
   if(tool==="rect"){
-    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:startPoint.y});
-    previewEdges.push({x1:w.x,y1:startPoint.y,x2:w.x,y2:w.y});
-    previewEdges.push({x1:w.x,y1:w.y,x2:startPoint.x,y2:w.y});
-    previewEdges.push({x1:startPoint.x,y1:w.y,x2:startPoint.x,y2:startPoint.y});
+    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:startPoint.y,color:currentColor});
+    previewEdges.push({x1:w.x,y1:startPoint.y,x2:w.x,y2:w.y,color:currentColor});
+    previewEdges.push({x1:w.x,y1:w.y,x2:startPoint.x,y2:w.y,color:currentColor});
+    previewEdges.push({x1:startPoint.x,y1:w.y,x2:startPoint.x,y2:startPoint.y,color:currentColor});
   }
 
   if(tool==="circle"){
@@ -221,7 +239,8 @@ function moveDraw(e){
         x1:startPoint.x+Math.cos(a1)*r,
         y1:startPoint.y+Math.sin(a1)*r,
         x2:startPoint.x+Math.cos(a2)*r,
-        y2:startPoint.y+Math.sin(a2)*r
+        y2:startPoint.y+Math.sin(a2)*r,
+        color:currentColor
       });
     }
   }
@@ -253,7 +272,7 @@ function zoom(e){
   redraw();
 }
 
-/* ================= UNIVERSAL TRIM ================= */
+/* ================= TRIM ================= */
 function trimSegment(mx,my){
 
   for(let i=0;i<edges.length;i++){
@@ -285,10 +304,10 @@ function trimSegment(mx,my){
         edges.splice(i,1);
 
         if(distance(line.x1,line.y1,p1.x,p1.y)>1)
-          edges.push({x1:line.x1,y1:line.y1,x2:p1.x,y2:p1.y});
+          edges.push({x1:line.x1,y1:line.y1,x2:p1.x,y2:p1.y,color:line.color});
 
         if(distance(p2.x,p2.y,line.x2,line.y2)>1)
-          edges.push({x1:p2.x,y1:p2.y,x2:line.x2,y2:line.y2});
+          edges.push({x1:p2.x,y1:p2.y,x2:line.x2,y2:line.y2,color:line.color});
 
         redraw();
         return;
