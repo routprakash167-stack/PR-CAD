@@ -60,6 +60,7 @@
   <button onclick="setTool('circle')">Circle</button>
   <button onclick="clearCanvas()">Clear</button>
   <button onclick="saveProject()">Save</button>
+  <button onclick="scaleLast()">Scale</button>
 </div>
 
 <canvas id="canvas" width="900" height="500"></canvas>
@@ -150,6 +151,32 @@ function saveProject() {
   link.download = "prcad_design.png";
   link.href = data;
   link.click();
+}
+function scaleLast() {
+  if (shapes.length === 0) return;
+
+  const factor = parseFloat(prompt("Enter Scale Factor (example: 2 = double size):"));
+
+  if (!factor) return;
+
+  const shape = shapes[shapes.length - 1];
+
+  if (shape.type === "rect") {
+    shape.w *= factor;
+    shape.h *= factor;
+  }
+
+  if (shape.type === "circle") {
+    shape.r *= factor;
+  }
+
+  if (shape.type === "line") {
+    shape.x2 = shape.x1 + (shape.x2 - shape.x1) * factor;
+    shape.y2 = shape.y1 + (shape.y2 - shape.y1) * factor;
+  }
+
+  redraw();
+}
 }
 </script>
 
