@@ -304,33 +304,77 @@ function zoom(e){
 /* ============================
    TRIM
 ============================ */
-function trimAt(x,y){
-  shapes=shapes.filter(s=>{
-    if(s.type!=="line") return true;
-    return pointLineDistance({x,y},s)>10;
-  });
-  redraw();
-}
+function trimSegment(mouseX, mouseY) {
 
-function pointLineDistance(p,l){
-  let A=p.x-l.x1;
-  let B=p.y-l.y1;
-  let C=l.x2-l.x1;
-  let D=l.y2-l.y1;
+    const threshold = 6;
 
-  let dot=A*C+B*D;
-  let len=C*C+D*D;
-  let t=dot/len;
-  if(t<0)t=0;
-  if(t>1)t=1;
+    for (let i = 0; i < shapes.length; i++) {
 
-  let xx=l.x1+t*C;
-  let yy=l.y1+t*D;
+        let shape = shapes[i];
 
-  let dx=p.x-xx;
-  let dy=p.y-yy;
+        if (shape.type !== "line") continue;
 
-  return Math.sqrt(dx*dx+dy*dy);
+        // Collect intersection points
+        let intersections = [];
+
+        for (let j = 0; j < shapes.length; j++) {
+            if (i === j) continue;
+
+            let other = shapes[j];
+            if (other.type !== "line") continue;
+
+            let pt = lineIntersection(shape, other);
+            if (pt) intersections.push(pt);
+        }
+
+        // Add start & end points
+        intersections.push({x: shape.x1, y: shape.y1});
+        intersections.push({x: shape.x2, y: shape.y2});
+
+        // Sort points along line
+        intersections.sort((a, b) => {
+            return distance(shape.x1, shape.y1, a.x, a.y) -
+                   distance(shape.x1, shape.y1, b.x, b.y);
+        });
+
+        // Check each segment
+        for (let k = 0; k < intersections.length - 1; k++) {
+
+            let p1 = intersections[k];
+            let p2 = intersections[k + 1];
+
+            if (pointNearLine(mouseX, mouseY, p1.x, p1.y, p2.x, p2.y)) {
+
+                // Remove original line
+                shapes.splice(i, 1);
+
+                // Add first part if valid
+                if (distance(shape.x1, shape.y1, p1.x, p1.y) > 1) {
+                    shapes.push({
+                        type: "line",
+                        x1: shape.x1,
+                        y1: shape.y1,
+                        x2: p1.x,
+                        y2: p1.y
+                    });
+                }
+
+                // Add second part if valid
+                if (distance(p2.x, p2.y, shape.x2, shape.y2) > 1) {
+                    shapes.push({
+                        type: "line",
+                        x1: p2.x,
+                        y1: p2.y,
+                        x2: shape.x2,
+                        y2: shape.y2
+                    });
+                }
+
+                redraw();
+                return;
+            }
+        }
+    }
 }
 
 /* ============================
