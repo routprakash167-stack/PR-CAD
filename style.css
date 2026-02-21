@@ -1,0 +1,107 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #0f0f14;
+    color: #ffffff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 60px;
+    background: #1a1a22;
+}
+
+.navbar img {
+    height: 50px;
+}
+
+.nav-links a {
+    margin-left: 25px;
+    text-decoration: none;
+    color: #ffffff;
+    font-size: 16px;
+}
+
+.btn-primary {
+    background: #00f0ff;
+    color: #000;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: bold;
+}
+
+.btn-secondary {
+    border: 2px solid #00f0ff;
+    padding: 10px 20px;
+    border-radius: 6px;
+}
+
+.hero {
+    text-align: center;
+    padding: 120px 20px;
+}
+
+.hero h1 {
+    font-size: 42px;
+    margin-bottom: 20px;
+}
+
+.hero p {
+    color: #aaaaaa;
+    max-width: 600px;
+    margin: auto;
+    margin-bottom: 30px;
+}
+
+.hero-buttons a {
+    margin: 10px;
+}
+
+.features, .pricing {
+    padding: 80px 40px;
+    text-align: center;
+}
+
+.feature-grid, .pricing-grid {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 40px;
+    flex-wrap: wrap;
+}
+
+.card {
+    background: #1a1a22;
+    padding: 30px;
+    width: 280px;
+    border-radius: 12px;
+    transition: 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-8px);
+    border: 1px solid #00f0ff;
+}
+
+.featured {
+    border: 2px solid #00f0ff;
+}
+
+.price {
+    font-size: 22px;
+    margin: 15px 0;
+}
+
+footer {
+    text-align: center;
+    padding: 30px;
+    background: #1a1a22;
+    color: #aaaaaa;
+}
