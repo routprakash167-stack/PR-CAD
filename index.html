@@ -73,11 +73,14 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight - 90;
 
+/* ================= ENGINE STORAGE ================= */
+let edges = [];   // universal storage
+
+/* ================= STATE ================= */
 let tool = "line";
 let drawing = false;
 let startPoint = null;
-let preview = null;
-let shapes = [];
+let previewEdges = [];
 
 let offset = {x:0,y:0};
 let scale = 1;
@@ -91,22 +94,14 @@ function setTool(t){ tool = t; }
 
 /* ================= COORDINATES ================= */
 function toWorld(x,y){
-  return {
-    x:(x/scale)+offset.x,
-    y:(y/scale)+offset.y
-  };
+  return { x:(x/scale)+offset.x, y:(y/scale)+offset.y };
 }
 
 function toScreen(x,y){
-  return {
-    x:(x-offset.x)*scale,
-    y:(y-offset.y)*scale
-  };
+  return { x:(x-offset.x)*scale, y:(y-offset.y)*scale };
 }
 
-function snap(v){
-  return Math.round(v/gridSize)*gridSize;
-}
+function snap(v){ return Math.round(v/gridSize)*gridSize; }
 
 /* ================= GRID ================= */
 function drawGrid(){
@@ -135,38 +130,23 @@ function drawGrid(){
   }
 }
 
-/* ================= DRAW SHAPES ================= */
-function drawShape(s,color="cyan"){
+/* ================= DRAW EDGES ================= */
+function drawEdge(e,color="cyan"){
   ctx.strokeStyle=color;
   ctx.lineWidth=2;
-
-  if(s.type==="line"){
-    let p1=toScreen(s.x1,s.y1);
-    let p2=toScreen(s.x2,s.y2);
-    ctx.beginPath();
-    ctx.moveTo(p1.x,p1.y);
-    ctx.lineTo(p2.x,p2.y);
-    ctx.stroke();
-  }
-
-  if(s.type==="rect"){
-    let p=toScreen(s.x1,s.y1);
-    ctx.strokeRect(p.x,p.y,s.w*scale,s.h*scale);
-  }
-
-  if(s.type==="circle"){
-    let p=toScreen(s.x1,s.y1);
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,s.r*scale,0,Math.PI*2);
-    ctx.stroke();
-  }
+  let p1=toScreen(e.x1,e.y1);
+  let p2=toScreen(e.x2,e.y2);
+  ctx.beginPath();
+  ctx.moveTo(p1.x,p1.y);
+  ctx.lineTo(p2.x,p2.y);
+  ctx.stroke();
 }
 
 function redraw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   drawGrid();
-  shapes.forEach(s=>drawShape(s));
-  if(preview) drawShape(preview,"yellow");
+  edges.forEach(e=>drawEdge(e));
+  previewEdges.forEach(e=>drawEdge(e,"yellow"));
 }
 
 /* ================= EVENTS ================= */
@@ -178,10 +158,7 @@ canvas.addEventListener("contextmenu",e=>e.preventDefault());
 
 function getMouse(e){
   const rect=canvas.getBoundingClientRect();
-  return {
-    x:e.clientX-rect.left,
-    y:e.clientY-rect.top
-  };
+  return { x:e.clientX-rect.left, y:e.clientY-rect.top };
 }
 
 function startDraw(e){
@@ -201,10 +178,7 @@ function startDraw(e){
   }
 
   drawing=true;
-  startPoint={
-    x:snap(w.x),
-    y:snap(w.y)
-  };
+  startPoint={ x:snap(w.x), y:snap(w.y) };
 }
 
 function moveDraw(e){
@@ -220,22 +194,36 @@ function moveDraw(e){
 
   if(!drawing) return;
 
+  previewEdges=[];
   let m=getMouse(e);
   let w=toWorld(m.x,m.y);
   w.x=snap(w.x);
   w.y=snap(w.y);
 
   if(tool==="line"){
-    preview={type:"line",x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:w.y};
+    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:w.y});
   }
 
   if(tool==="rect"){
-    preview={type:"rect",x1:startPoint.x,y1:startPoint.y,w:w.x-startPoint.x,h:w.y-startPoint.y};
+    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:startPoint.y});
+    previewEdges.push({x1:w.x,y1:startPoint.y,x2:w.x,y2:w.y});
+    previewEdges.push({x1:w.x,y1:w.y,x2:startPoint.x,y2:w.y});
+    previewEdges.push({x1:startPoint.x,y1:w.y,x2:startPoint.x,y2:startPoint.y});
   }
 
   if(tool==="circle"){
     let r=Math.hypot(w.x-startPoint.x,w.y-startPoint.y);
-    preview={type:"circle",x1:startPoint.x,y1:startPoint.y,r:r};
+    let segments=60;
+    for(let i=0;i<segments;i++){
+      let a1=(i/segments)*Math.PI*2;
+      let a2=((i+1)/segments)*Math.PI*2;
+      previewEdges.push({
+        x1:startPoint.x+Math.cos(a1)*r,
+        y1:startPoint.y+Math.sin(a1)*r,
+        x2:startPoint.x+Math.cos(a2)*r,
+        y2:startPoint.y+Math.sin(a2)*r
+      });
+    }
   }
 
   redraw();
@@ -246,8 +234,8 @@ function endDraw(){
   if(!drawing) return;
   drawing=false;
 
-  if(preview) shapes.push(preview);
-  preview=null;
+  edges.push(...previewEdges);
+  previewEdges=[];
   redraw();
 }
 
@@ -262,34 +250,29 @@ function zoom(e){
 
   offset.x=mouse.x-(e.offsetX/scale);
   offset.y=mouse.y-(e.offsetY/scale);
-
   redraw();
 }
 
-/* ================= TRIM (SMART SEGMENT) ================= */
-function trimSegment(mouseX, mouseY){
+/* ================= UNIVERSAL TRIM ================= */
+function trimSegment(mx,my){
 
-  for(let i=0;i<shapes.length;i++){
+  for(let i=0;i<edges.length;i++){
 
-    let shape=shapes[i];
-    if(shape.type!=="line") continue;
-
+    let line=edges[i];
     let intersections=[];
 
-    for(let j=0;j<shapes.length;j++){
+    for(let j=0;j<edges.length;j++){
       if(i===j) continue;
-      let other=shapes[j];
-      if(other.type!=="line") continue;
-      let pt=lineIntersection(shape,other);
+      let pt=lineIntersection(line,edges[j]);
       if(pt) intersections.push(pt);
     }
 
-    intersections.push({x:shape.x1,y:shape.y1});
-    intersections.push({x:shape.x2,y:shape.y2});
+    intersections.push({x:line.x1,y:line.y1});
+    intersections.push({x:line.x2,y:line.y2});
 
     intersections.sort((a,b)=>
-      distance(shape.x1,shape.y1,a.x,a.y)-
-      distance(shape.x1,shape.y1,b.x,b.y)
+      distance(line.x1,line.y1,a.x,a.y)-
+      distance(line.x1,line.y1,b.x,b.y)
     );
 
     for(let k=0;k<intersections.length-1;k++){
@@ -297,15 +280,15 @@ function trimSegment(mouseX, mouseY){
       let p1=intersections[k];
       let p2=intersections[k+1];
 
-      if(pointNearLine(mouseX,mouseY,p1.x,p1.y,p2.x,p2.y)){
+      if(pointNearLine(mx,my,p1.x,p1.y,p2.x,p2.y)){
 
-        shapes.splice(i,1);
+        edges.splice(i,1);
 
-        if(distance(shape.x1,shape.y1,p1.x,p1.y)>1)
-          shapes.push({type:"line",x1:shape.x1,y1:shape.y1,x2:p1.x,y2:p1.y});
+        if(distance(line.x1,line.y1,p1.x,p1.y)>1)
+          edges.push({x1:line.x1,y1:line.y1,x2:p1.x,y2:p1.y});
 
-        if(distance(p2.x,p2.y,shape.x2,shape.y2)>1)
-          shapes.push({type:"line",x1:p2.x,y1:p2.y,x2:shape.x2,y2:shape.y2});
+        if(distance(p2.x,p2.y,line.x2,line.y2)>1)
+          edges.push({x1:p2.x,y1:p2.y,x2:line.x2,y2:line.y2});
 
         redraw();
         return;
@@ -314,64 +297,48 @@ function trimSegment(mouseX, mouseY){
   }
 }
 
-/* ================= MATH HELPERS ================= */
-function distance(x1,y1,x2,y2){
-  return Math.hypot(x2-x1,y2-y1);
-}
+/* ================= MATH ================= */
+function distance(x1,y1,x2,y2){ return Math.hypot(x2-x1,y2-y1); }
 
 function pointNearLine(mx,my,x1,y1,x2,y2){
-
   const threshold=8;
-
-  let A=mx-x1;
-  let B=my-y1;
-  let C=x2-x1;
-  let D=y2-y1;
-
+  let A=mx-x1,B=my-y1,C=x2-x1,D=y2-y1;
   let dot=A*C+B*D;
   let len=C*C+D*D;
   let param=dot/len;
-
   if(param<0||param>1) return false;
-
   let xx=x1+param*C;
   let yy=y1+param*D;
-
   return distance(mx,my,xx,yy)<threshold/scale;
 }
 
 function lineIntersection(l1,l2){
-
-  let x1=l1.x1,y1=l1.y1,x2=l1.x2,y2=l1.y2;
+  let {x1,y1,x2,y2}=l1;
   let x3=l2.x1,y3=l2.y1,x4=l2.x2,y4=l2.y2;
-
   let denom=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
   if(denom===0) return null;
-
   let px=((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4))/denom;
   let py=((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4))/denom;
-
   if(px<Math.min(x1,x2)-1||px>Math.max(x1,x2)+1) return null;
   if(px<Math.min(x3,x4)-1||px>Math.max(x3,x4)+1) return null;
   if(py<Math.min(y1,y2)-1||py>Math.max(y1,y2)+1) return null;
   if(py<Math.min(y3,y4)-1||py>Math.max(y3,y4)+1) return null;
-
   return {x:px,y:py};
 }
 
-/* ================= SAVE / LOAD ================= */
+/* ================= SAVE ================= */
 function saveProject(){
-  localStorage.setItem("prcad_project",JSON.stringify(shapes));
+  localStorage.setItem("prcad_project",JSON.stringify(edges));
   alert("Project Saved");
 }
 
 function clearCanvas(){
-  shapes=[];
+  edges=[];
   redraw();
 }
 
 let saved=localStorage.getItem("prcad_project");
-if(saved) shapes=JSON.parse(saved);
+if(saved) edges=JSON.parse(saved);
 
 redraw();
 </script>
