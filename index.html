@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>PR CAD - Layer System</title>
+<title>PR CAD - 2D Design Studio</title>
 
 <style>
 body{
@@ -44,11 +44,11 @@ button:hover{
   color:black;
 }
 
-select{
-  background:#222;
-  color:white;
-  border:1px solid cyan;
-  padding:5px;
+input[type="color"]{
+  width:40px;
+  height:30px;
+  border:none;
+  cursor:pointer;
 }
 
 canvas{
@@ -56,28 +56,12 @@ canvas{
   background:#000;
   touch-action:none;
 }
-
-.layer-panel{
-  position:absolute;
-  right:10px;
-  top:100px;
-  background:#111;
-  padding:10px;
-  border:1px solid cyan;
-  max-width:200px;
-}
-.layer-item{
-  display:flex;
-  justify-content:space-between;
-  margin-bottom:5px;
-  font-size:13px;
-}
 </style>
 </head>
 
 <body>
 
-<header>PR CAD - Layer Engine</header>
+<header>PR CAD - Infinite 2D Engine</header>
 
 <div class="toolbar">
   <button onclick="setTool('line')">Line</button>
@@ -85,16 +69,12 @@ canvas{
   <button onclick="setTool('circle')">Circle</button>
   <button onclick="setTool('trim')">Trim</button>
 
+  <label style="color:cyan;">Color:</label>
   <input type="color" id="colorPicker" value="#00ffff">
 
-  <button onclick="addLayer()">Add Layer</button>
-
-  <select id="layerSelect"></select>
-
   <button onclick="clearCanvas()">Clear</button>
+  <button onclick="saveProject()">Save</button>
 </div>
-
-<div class="layer-panel" id="layerPanel"></div>
 
 <canvas id="canvas"></canvas>
 
@@ -102,95 +82,73 @@ canvas{
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const colorPicker = document.getElementById("colorPicker");
-const layerSelect = document.getElementById("layerSelect");
-const layerPanel = document.getElementById("layerPanel");
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight - 90;
 
-/* ================= LAYER SYSTEM ================= */
+/* ================= ENGINE STORAGE ================= */
+let edges = [];
+let currentColor = colorPicker.value;
 
-let layers = [
-  { name:"Layer 1", visible:true, edges:[] }
-];
-
-let activeLayerIndex = 0;
-
-function addLayer(){
-  let name = "Layer " + (layers.length+1);
-  layers.push({ name:name, visible:true, edges:[] });
-  updateLayerUI();
-}
-
-function updateLayerUI(){
-
-  layerSelect.innerHTML="";
-  layerPanel.innerHTML="";
-
-  layers.forEach((layer,index)=>{
-
-    // dropdown
-    let option=document.createElement("option");
-    option.value=index;
-    option.text=layer.name;
-    layerSelect.appendChild(option);
-
-    // panel
-    let div=document.createElement("div");
-    div.className="layer-item";
-
-    let title=document.createElement("span");
-    title.textContent=layer.name;
-
-    let toggle=document.createElement("button");
-    toggle.textContent=layer.visible?"👁":"❌";
-    toggle.onclick=()=>{
-      layer.visible=!layer.visible;
-      updateLayerUI();
-      redraw();
-    };
-
-    div.appendChild(title);
-    div.appendChild(toggle);
-    layerPanel.appendChild(div);
-  });
-
-  layerSelect.value=activeLayerIndex;
-}
-
-layerSelect.onchange=function(){
-  activeLayerIndex=parseInt(this.value);
-};
-
-updateLayerUI();
+colorPicker.addEventListener("input",()=>{
+  currentColor = colorPicker.value;
+});
 
 /* ================= STATE ================= */
+let tool = "line";
+let drawing = false;
+let startPoint = null;
+let previewEdges = [];
 
-let tool="line";
-let drawing=false;
-let startPoint=null;
-let previewEdges=[];
-let currentColor=colorPicker.value;
+let offset = {x:0,y:0};
+let scale = 1;
+let gridSize = 25;
 
-colorPicker.oninput=()=>currentColor=colorPicker.value;
+let isPanning = false;
+let panStart = null;
 
-let offset={x:0,y:0};
-let scale=1;
-let gridSize=25;
+/* ================= TOOL ================= */
+function setTool(t){ tool = t; }
 
-let isPanning=false;
-let panStart=null;
+/* ================= COORDINATES ================= */
+function toWorld(x,y){
+  return { x:(x/scale)+offset.x, y:(y/scale)+offset.y };
+}
 
-function setTool(t){ tool=t; }
+function toScreen(x,y){
+  return { x:(x-offset.x)*scale, y:(y-offset.y)*scale };
+}
 
-/* ================= COORD ================= */
-
-function toWorld(x,y){ return {x:(x/scale)+offset.x,y:(y/scale)+offset.y}; }
-function toScreen(x,y){ return {x:(x-offset.x)*scale,y:(y-offset.y)*scale}; }
 function snap(v){ return Math.round(v/gridSize)*gridSize; }
 
-/* ================= DRAW ================= */
+/* ================= GRID ================= */
+function drawGrid(){
+  ctx.strokeStyle="#111";
+  ctx.lineWidth=1;
 
+  let left=offset.x;
+  let right=offset.x+canvas.width/scale;
+  let top=offset.y;
+  let bottom=offset.y+canvas.height/scale;
+
+  for(let x=Math.floor(left/gridSize)*gridSize;x<right;x+=gridSize){
+    let s=toScreen(x,0);
+    ctx.beginPath();
+    ctx.moveTo(s.x,0);
+    ctx.lineTo(s.x,canvas.height);
+    ctx.stroke();
+  }
+
+  for(let y=Math.floor(top/gridSize)*gridSize;y<bottom;y+=gridSize){
+    let s=toScreen(0,y);
+    ctx.beginPath();
+    ctx.moveTo(0,s.y);
+    ctx.lineTo(canvas.width,s.y);
+    ctx.stroke();
+  }
+}
+
+/* ================= DRAW ================= */
 function drawEdge(e){
   ctx.strokeStyle=e.color;
   ctx.lineWidth=2;
@@ -204,25 +162,21 @@ function drawEdge(e){
 
 function redraw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  layers.forEach(layer=>{
-    if(!layer.visible) return;
-    layer.edges.forEach(e=>drawEdge(e));
-  });
-
+  drawGrid();
+  edges.forEach(e=>drawEdge(e));
   previewEdges.forEach(e=>drawEdge(e));
 }
 
 /* ================= EVENTS ================= */
-
 canvas.addEventListener("mousedown",startDraw);
 canvas.addEventListener("mousemove",moveDraw);
 canvas.addEventListener("mouseup",endDraw);
+canvas.addEventListener("wheel",zoom);
 canvas.addEventListener("contextmenu",e=>e.preventDefault());
 
 function getMouse(e){
   const rect=canvas.getBoundingClientRect();
-  return {x:e.clientX-rect.left,y:e.clientY-rect.top};
+  return { x:e.clientX-rect.left, y:e.clientY-rect.top };
 }
 
 function startDraw(e){
@@ -242,15 +196,15 @@ function startDraw(e){
   }
 
   drawing=true;
-  startPoint={x:snap(w.x),y:snap(w.y)};
+  startPoint={ x:snap(w.x), y:snap(w.y) };
 }
 
 function moveDraw(e){
 
   if(isPanning){
     let m=getMouse(e);
-    offset.x-=(m.x-panStart.x)/scale;
-    offset.y-=(m.y-panStart.y)/scale;
+    offset.x-= (m.x-panStart.x)/scale;
+    offset.y-= (m.y-panStart.y)/scale;
     panStart=m;
     redraw();
     return;
@@ -299,62 +253,70 @@ function endDraw(){
   if(!drawing) return;
   drawing=false;
 
-  layers[activeLayerIndex].edges.push(...previewEdges);
+  edges.push(...previewEdges);
   previewEdges=[];
   redraw();
 }
 
-/* ================= TRIM ================= */
+/* ================= ZOOM ================= */
+function zoom(e){
+  e.preventDefault();
+  const zoomFactor=1.1;
+  const mouse=toWorld(e.offsetX,e.offsetY);
 
+  if(e.deltaY<0) scale*=zoomFactor;
+  else scale/=zoomFactor;
+
+  offset.x=mouse.x-(e.offsetX/scale);
+  offset.y=mouse.y-(e.offsetY/scale);
+  redraw();
+}
+
+/* ================= TRIM ================= */
 function trimSegment(mx,my){
 
-  layers.forEach(layer=>{
-    if(!layer.visible) return;
+  for(let i=0;i<edges.length;i++){
 
-    for(let i=0;i<layer.edges.length;i++){
+    let line=edges[i];
+    let intersections=[];
 
-      let line=layer.edges[i];
-      let intersections=[];
+    for(let j=0;j<edges.length;j++){
+      if(i===j) continue;
+      let pt=lineIntersection(line,edges[j]);
+      if(pt) intersections.push(pt);
+    }
 
-      layer.edges.forEach((other,j)=>{
-        if(i===j) return;
-        let pt=lineIntersection(line,other);
-        if(pt) intersections.push(pt);
-      });
+    intersections.push({x:line.x1,y:line.y1});
+    intersections.push({x:line.x2,y:line.y2});
 
-      intersections.push({x:line.x1,y:line.y1});
-      intersections.push({x:line.x2,y:line.y2});
+    intersections.sort((a,b)=>
+      distance(line.x1,line.y1,a.x,a.y)-
+      distance(line.x1,line.y1,b.x,b.y)
+    );
 
-      intersections.sort((a,b)=>
-        distance(line.x1,line.y1,a.x,a.y)-
-        distance(line.x1,line.y1,b.x,b.y)
-      );
+    for(let k=0;k<intersections.length-1;k++){
 
-      for(let k=0;k<intersections.length-1;k++){
+      let p1=intersections[k];
+      let p2=intersections[k+1];
 
-        let p1=intersections[k];
-        let p2=intersections[k+1];
+      if(pointNearLine(mx,my,p1.x,p1.y,p2.x,p2.y)){
 
-        if(pointNearLine(mx,my,p1.x,p1.y,p2.x,p2.y)){
+        edges.splice(i,1);
 
-          layer.edges.splice(i,1);
+        if(distance(line.x1,line.y1,p1.x,p1.y)>1)
+          edges.push({x1:line.x1,y1:line.y1,x2:p1.x,y2:p1.y,color:line.color});
 
-          if(distance(line.x1,line.y1,p1.x,p1.y)>1)
-            layer.edges.push({x1:line.x1,y1:line.y1,x2:p1.x,y2:p1.y,color:line.color});
+        if(distance(p2.x,p2.y,line.x2,line.y2)>1)
+          edges.push({x1:p2.x,y1:p2.y,x2:line.x2,y2:line.y2,color:line.color});
 
-          if(distance(p2.x,p2.y,line.x2,line.y2)>1)
-            layer.edges.push({x1:p2.x,y1:p2.y,x2:line.x2,y2:line.y2,color:line.color});
-
-          redraw();
-          return;
-        }
+        redraw();
+        return;
       }
     }
-  });
+  }
 }
 
 /* ================= MATH ================= */
-
 function distance(x1,y1,x2,y2){ return Math.hypot(x2-x1,y2-y1); }
 
 function pointNearLine(mx,my,x1,y1,x2,y2){
@@ -376,15 +338,26 @@ function lineIntersection(l1,l2){
   if(denom===0) return null;
   let px=((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4))/denom;
   let py=((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4))/denom;
+  if(px<Math.min(x1,x2)-1||px>Math.max(x1,x2)+1) return null;
+  if(px<Math.min(x3,x4)-1||px>Math.max(x3,x4)+1) return null;
+  if(py<Math.min(y1,y2)-1||py>Math.max(y1,y2)+1) return null;
+  if(py<Math.min(y3,y4)-1||py>Math.max(y3,y4)+1) return null;
   return {x:px,y:py};
 }
 
-/* ================= CLEAR ================= */
+/* ================= SAVE ================= */
+function saveProject(){
+  localStorage.setItem("prcad_project",JSON.stringify(edges));
+  alert("Project Saved");
+}
 
 function clearCanvas(){
-  layers.forEach(l=>l.edges=[]);
+  edges=[];
   redraw();
 }
+
+let saved=localStorage.getItem("prcad_project");
+if(saved) edges=JSON.parse(saved);
 
 redraw();
 </script>
