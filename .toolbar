@@ -2,3 +2,10 @@
 <button onclick="saveProject()">Save Project</button>
 <button onclick="loadProject()">Load Project</button>
 <button onclick="setTool('measure')">Measure</button>
+<button onclick="setTool('square')">Square</button>
+<button onclick="setTool('arc')">Arc</button>
+<button onclick="setTool('ellipse')">Ellipse</button>
+<button onclick="setTool('polygon')">Polygon</button>
+<button onclick="setTool('spline')">Spline</button>
+<button onclick="setTool('xline')">Const Line</button>
+<button onclick="setTool('ray')">Ray</button>
