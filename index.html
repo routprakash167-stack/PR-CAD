@@ -1,331 +1,393 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>PR CAD</title>
+<title>PR CAD - Layer System</title>
 
 <style>
 body{
-    margin:0;
-    background:#111;
-    color:white;
-    font-family:Arial;
-    overflow:hidden;
+  margin:0;
+  background:#0f0f0f;
+  color:white;
+  font-family:Arial;
+  overflow:hidden;
 }
 
-#toolbar{
-    position:fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:50px;
-    background:#1b1b1b;
-    display:flex;
-    align-items:center;
-    gap:5px;
-    padding:5px;
-    z-index:10;
+header{
+  background:#111;
+  padding:12px;
+  text-align:center;
+  font-size:20px;
+  font-weight:bold;
+  color:cyan;
+}
+
+.toolbar{
+  background:#1a1a1a;
+  padding:8px;
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  flex-wrap:wrap;
+  align-items:center;
 }
 
 button{
-    background:#333;
-    color:white;
-    border:none;
-    padding:6px 10px;
-    cursor:pointer;
+  background:#222;
+  color:white;
+  border:1px solid cyan;
+  padding:6px 12px;
+  cursor:pointer;
 }
 
 button:hover{
-    background:#555;
+  background:cyan;
+  color:black;
 }
 
-#colorPicker{
-    width:40px;
-    height:30px;
+select{
+  background:#222;
+  color:white;
+  border:1px solid cyan;
+  padding:5px;
 }
 
 canvas{
-    position:absolute;
-    top:50px;
-    left:0;
+  display:block;
+  background:#000;
+  touch-action:none;
+}
+
+.layer-panel{
+  position:absolute;
+  right:10px;
+  top:100px;
+  background:#111;
+  padding:10px;
+  border:1px solid cyan;
+  max-width:200px;
+}
+.layer-item{
+  display:flex;
+  justify-content:space-between;
+  margin-bottom:5px;
+  font-size:13px;
 }
 </style>
 </head>
 
 <body>
 
-<div id="toolbar">
-<button onclick="setTool('select')">Select</button>
-<button onclick="setTool('line')">Line</button>
-<button onclick="setTool('polyline')">Polyline</button>
-<button onclick="setTool('rectangle')">Rect</button>
-<button onclick="setTool('square')">Square</button>
-<button onclick="setTool('circle')">Circle</button>
-<button onclick="setTool('ellipse')">Ellipse</button>
-<button onclick="setTool('arc')">Arc</button>
-<button onclick="setTool('polygon')">Polygon</button>
-<button onclick="setTool('ray')">Ray</button>
-<button onclick="setTool('xline')">XLine</button>
-<button onclick="setTool('trim')">Trim</button>
-<button onclick="deleteSelected()">Delete</button>
-<button onclick="saveProject()">Save</button>
-<button onclick="loadProject()">Load</button>
-<input type="color" id="colorPicker">
+<header>PR CAD - Layer Engine</header>
+
+<div class="toolbar">
+  <button onclick="setTool('line')">Line</button>
+  <button onclick="setTool('rect')">Rectangle</button>
+  <button onclick="setTool('circle')">Circle</button>
+  <button onclick="setTool('trim')">Trim</button>
+
+  <input type="color" id="colorPicker" value="#00ffff">
+
+  <button onclick="addLayer()">Add Layer</button>
+
+  <select id="layerSelect"></select>
+
+  <button onclick="clearCanvas()">Clear</button>
 </div>
+
+<div class="layer-panel" id="layerPanel"></div>
 
 <canvas id="canvas"></canvas>
 
 <script>
-
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const colorPicker = document.getElementById("colorPicker");
+const layerSelect = document.getElementById("layerSelect");
+const layerPanel = document.getElementById("layerPanel");
 
 canvas.width = window.innerWidth;
-canvas.height = window.innerHeight - 50;
+canvas.height = window.innerHeight - 90;
 
-let entities = [];
-let currentTool = "line";
-let drawing = false;
-let startPoint = null;
-let tempPoint = null;
-let selected = null;
+/* ================= LAYER SYSTEM ================= */
 
-let scale = 1;
-let offsetX = 0;
-let offsetY = 0;
+let layers = [
+  { name:"Layer 1", visible:true, edges:[] }
+];
 
-let currentColor = "#ffffff";
+let activeLayerIndex = 0;
 
-document.getElementById("colorPicker").addEventListener("input", e=>{
-    currentColor = e.target.value;
-});
-
-function setTool(t){
-    currentTool = t;
+function addLayer(){
+  let name = "Layer " + (layers.length+1);
+  layers.push({ name:name, visible:true, edges:[] });
+  updateLayerUI();
 }
 
-function worldToScreen(x,y){
-    return {
-        x: x*scale + offsetX,
-        y: y*scale + offsetY
+function updateLayerUI(){
+
+  layerSelect.innerHTML="";
+  layerPanel.innerHTML="";
+
+  layers.forEach((layer,index)=>{
+
+    // dropdown
+    let option=document.createElement("option");
+    option.value=index;
+    option.text=layer.name;
+    layerSelect.appendChild(option);
+
+    // panel
+    let div=document.createElement("div");
+    div.className="layer-item";
+
+    let title=document.createElement("span");
+    title.textContent=layer.name;
+
+    let toggle=document.createElement("button");
+    toggle.textContent=layer.visible?"👁":"❌";
+    toggle.onclick=()=>{
+      layer.visible=!layer.visible;
+      updateLayerUI();
+      redraw();
     };
+
+    div.appendChild(title);
+    div.appendChild(toggle);
+    layerPanel.appendChild(div);
+  });
+
+  layerSelect.value=activeLayerIndex;
 }
 
-function screenToWorld(x,y){
-    return {
-        x:(x-offsetX)/scale,
-        y:(y-offsetY)/scale
-    };
-}
+layerSelect.onchange=function(){
+  activeLayerIndex=parseInt(this.value);
+};
 
-function drawGrid(){
-    ctx.strokeStyle="#222";
-    ctx.lineWidth=1;
-    let step = 50*scale;
+updateLayerUI();
 
-    for(let x=offsetX%step;x<canvas.width;x+=step){
-        ctx.beginPath();
-        ctx.moveTo(x,0);
-        ctx.lineTo(x,canvas.height);
-        ctx.stroke();
-    }
+/* ================= STATE ================= */
 
-    for(let y=offsetY%step;y<canvas.height;y+=step){
-        ctx.beginPath();
-        ctx.moveTo(0,y);
-        ctx.lineTo(canvas.width,y);
-        ctx.stroke();
-    }
+let tool="line";
+let drawing=false;
+let startPoint=null;
+let previewEdges=[];
+let currentColor=colorPicker.value;
+
+colorPicker.oninput=()=>currentColor=colorPicker.value;
+
+let offset={x:0,y:0};
+let scale=1;
+let gridSize=25;
+
+let isPanning=false;
+let panStart=null;
+
+function setTool(t){ tool=t; }
+
+/* ================= COORD ================= */
+
+function toWorld(x,y){ return {x:(x/scale)+offset.x,y:(y/scale)+offset.y}; }
+function toScreen(x,y){ return {x:(x-offset.x)*scale,y:(y-offset.y)*scale}; }
+function snap(v){ return Math.round(v/gridSize)*gridSize; }
+
+/* ================= DRAW ================= */
+
+function drawEdge(e){
+  ctx.strokeStyle=e.color;
+  ctx.lineWidth=2;
+  let p1=toScreen(e.x1,e.y1);
+  let p2=toScreen(e.x2,e.y2);
+  ctx.beginPath();
+  ctx.moveTo(p1.x,p1.y);
+  ctx.lineTo(p2.x,p2.y);
+  ctx.stroke();
 }
 
 function redraw(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    drawGrid();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    entities.forEach(e=>{
-        ctx.strokeStyle=e.color;
-        ctx.lineWidth=2;
+  layers.forEach(layer=>{
+    if(!layer.visible) return;
+    layer.edges.forEach(e=>drawEdge(e));
+  });
 
-        if(e.type==="line"){
-            let p1=worldToScreen(e.start.x,e.start.y);
-            let p2=worldToScreen(e.end.x,e.end.y);
-            ctx.beginPath();
-            ctx.moveTo(p1.x,p1.y);
-            ctx.lineTo(p2.x,p2.y);
-            ctx.stroke();
-        }
-
-        if(e.type==="circle"){
-            let c=worldToScreen(e.center.x,e.center.y);
-            ctx.beginPath();
-            ctx.arc(c.x,c.y,e.radius*scale,0,Math.PI*2);
-            ctx.stroke();
-        }
-
-        if(e.type==="ellipse"){
-            let c=worldToScreen(e.center.x,e.center.y);
-            ctx.beginPath();
-            ctx.ellipse(c.x,c.y,e.rx*scale,e.ry*scale,0,0,Math.PI*2);
-            ctx.stroke();
-        }
-
-        if(e.type==="arc"){
-            let c=worldToScreen(e.center.x,e.center.y);
-            ctx.beginPath();
-            ctx.arc(c.x,c.y,e.radius*scale,e.start,e.end);
-            ctx.stroke();
-        }
-    });
-
-    if(selected){
-        ctx.strokeStyle="yellow";
-        ctx.lineWidth=3;
-        let p1=worldToScreen(selected.start.x,selected.start.y);
-        let p2=worldToScreen(selected.end.x,selected.end.y);
-        ctx.beginPath();
-        ctx.moveTo(p1.x,p1.y);
-        ctx.lineTo(p2.x,p2.y);
-        ctx.stroke();
-    }
+  previewEdges.forEach(e=>drawEdge(e));
 }
 
-canvas.addEventListener("mousedown", e=>{
-    const pos=screenToWorld(e.offsetX,e.offsetY);
-    drawing=true;
-    startPoint=pos;
+/* ================= EVENTS ================= */
 
-    if(currentTool==="select"){
-        selected=findLineNear(pos);
-    }
+canvas.addEventListener("mousedown",startDraw);
+canvas.addEventListener("mousemove",moveDraw);
+canvas.addEventListener("mouseup",endDraw);
+canvas.addEventListener("contextmenu",e=>e.preventDefault());
 
-    if(currentTool==="trim"){
-        trimAtPoint(pos);
-    }
-});
+function getMouse(e){
+  const rect=canvas.getBoundingClientRect();
+  return {x:e.clientX-rect.left,y:e.clientY-rect.top};
+}
 
-canvas.addEventListener("mousemove", e=>{
-    if(!drawing) return;
-    tempPoint=screenToWorld(e.offsetX,e.offsetY);
+function startDraw(e){
+
+  if(e.button===2){
+    isPanning=true;
+    panStart=getMouse(e);
+    return;
+  }
+
+  let m=getMouse(e);
+  let w=toWorld(m.x,m.y);
+
+  if(tool==="trim"){
+    trimSegment(w.x,w.y);
+    return;
+  }
+
+  drawing=true;
+  startPoint={x:snap(w.x),y:snap(w.y)};
+}
+
+function moveDraw(e){
+
+  if(isPanning){
+    let m=getMouse(e);
+    offset.x-=(m.x-panStart.x)/scale;
+    offset.y-=(m.y-panStart.y)/scale;
+    panStart=m;
     redraw();
+    return;
+  }
 
-    if(currentTool==="line"){
-        let p1=worldToScreen(startPoint.x,startPoint.y);
-        let p2=worldToScreen(tempPoint.x,tempPoint.y);
-        ctx.strokeStyle=currentColor;
-        ctx.beginPath();
-        ctx.moveTo(p1.x,p1.y);
-        ctx.lineTo(p2.x,p2.y);
-        ctx.stroke();
+  if(!drawing) return;
+
+  previewEdges=[];
+  let m=getMouse(e);
+  let w=toWorld(m.x,m.y);
+  w.x=snap(w.x);
+  w.y=snap(w.y);
+
+  if(tool==="line"){
+    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:w.y,color:currentColor});
+  }
+
+  if(tool==="rect"){
+    previewEdges.push({x1:startPoint.x,y1:startPoint.y,x2:w.x,y2:startPoint.y,color:currentColor});
+    previewEdges.push({x1:w.x,y1:startPoint.y,x2:w.x,y2:w.y,color:currentColor});
+    previewEdges.push({x1:w.x,y1:w.y,x2:startPoint.x,y2:w.y,color:currentColor});
+    previewEdges.push({x1:startPoint.x,y1:w.y,x2:startPoint.x,y2:startPoint.y,color:currentColor});
+  }
+
+  if(tool==="circle"){
+    let r=Math.hypot(w.x-startPoint.x,w.y-startPoint.y);
+    let segments=60;
+    for(let i=0;i<segments;i++){
+      let a1=(i/segments)*Math.PI*2;
+      let a2=((i+1)/segments)*Math.PI*2;
+      previewEdges.push({
+        x1:startPoint.x+Math.cos(a1)*r,
+        y1:startPoint.y+Math.sin(a1)*r,
+        x2:startPoint.x+Math.cos(a2)*r,
+        y2:startPoint.y+Math.sin(a2)*r,
+        color:currentColor
+      });
     }
-});
+  }
 
-canvas.addEventListener("mouseup", e=>{
-    if(!drawing) return;
-    const end=screenToWorld(e.offsetX,e.offsetY);
-
-    if(currentTool==="line"){
-        entities.push({type:"line",start:startPoint,end:end,color:currentColor});
-    }
-
-    if(currentTool==="rectangle"){
-        addRectangle(startPoint,end);
-    }
-
-    if(currentTool==="square"){
-        addSquare(startPoint,end);
-    }
-
-    if(currentTool==="circle"){
-        let r=Math.hypot(end.x-startPoint.x,end.y-startPoint.y);
-        entities.push({type:"circle",center:startPoint,radius:r,color:currentColor});
-    }
-
-    if(currentTool==="ellipse"){
-        entities.push({type:"ellipse",center:startPoint,rx:Math.abs(end.x-startPoint.x),ry:Math.abs(end.y-startPoint.y),color:currentColor});
-    }
-
-    drawing=false;
-    redraw();
-});
-
-function addRectangle(p1,p2){
-    entities.push({type:"line",start:{x:p1.x,y:p1.y},end:{x:p2.x,y:p1.y},color:currentColor});
-    entities.push({type:"line",start:{x:p2.x,y:p1.y},end:{x:p2.x,y:p2.y},color:currentColor});
-    entities.push({type:"line",start:{x:p2.x,y:p2.y},end:{x:p1.x,y:p2.y},color:currentColor});
-    entities.push({type:"line",start:{x:p1.x,y:p2.y},end:{x:p1.x,y:p1.y},color:currentColor});
+  redraw();
 }
 
-function addSquare(p1,p2){
-    let size=Math.max(Math.abs(p2.x-p1.x),Math.abs(p2.y-p1.y));
-    addRectangle(p1,{x:p1.x+size,y:p1.y+size});
+function endDraw(){
+  if(isPanning){ isPanning=false; return; }
+  if(!drawing) return;
+  drawing=false;
+
+  layers[activeLayerIndex].edges.push(...previewEdges);
+  previewEdges=[];
+  redraw();
 }
 
-function findLineNear(p){
-    for(let e of entities){
-        if(e.type==="line"){
-            let d=distancePointToLine(p,e.start,e.end);
-            if(d<5/scale) return e;
+/* ================= TRIM ================= */
+
+function trimSegment(mx,my){
+
+  layers.forEach(layer=>{
+    if(!layer.visible) return;
+
+    for(let i=0;i<layer.edges.length;i++){
+
+      let line=layer.edges[i];
+      let intersections=[];
+
+      layer.edges.forEach((other,j)=>{
+        if(i===j) return;
+        let pt=lineIntersection(line,other);
+        if(pt) intersections.push(pt);
+      });
+
+      intersections.push({x:line.x1,y:line.y1});
+      intersections.push({x:line.x2,y:line.y2});
+
+      intersections.sort((a,b)=>
+        distance(line.x1,line.y1,a.x,a.y)-
+        distance(line.x1,line.y1,b.x,b.y)
+      );
+
+      for(let k=0;k<intersections.length-1;k++){
+
+        let p1=intersections[k];
+        let p2=intersections[k+1];
+
+        if(pointNearLine(mx,my,p1.x,p1.y,p2.x,p2.y)){
+
+          layer.edges.splice(i,1);
+
+          if(distance(line.x1,line.y1,p1.x,p1.y)>1)
+            layer.edges.push({x1:line.x1,y1:line.y1,x2:p1.x,y2:p1.y,color:line.color});
+
+          if(distance(p2.x,p2.y,line.x2,line.y2)>1)
+            layer.edges.push({x1:p2.x,y1:p2.y,x2:line.x2,y2:line.y2,color:line.color});
+
+          redraw();
+          return;
         }
+      }
     }
-    return null;
+  });
 }
 
-function distancePointToLine(p,a,b){
-    let A=p.x-a.x;
-    let B=p.y-a.y;
-    let C=b.x-a.x;
-    let D=b.y-a.y;
+/* ================= MATH ================= */
 
-    let dot=A*C+B*D;
-    let len=C*C+D*D;
-    let param=dot/len;
+function distance(x1,y1,x2,y2){ return Math.hypot(x2-x1,y2-y1); }
 
-    let xx,yy;
-
-    if(param<0){xx=a.x;yy=a.y;}
-    else if(param>1){xx=b.x;yy=b.y;}
-    else{xx=a.x+param*C;yy=a.y+param*D;}
-
-    return Math.hypot(p.x-xx,p.y-yy);
+function pointNearLine(mx,my,x1,y1,x2,y2){
+  const threshold=8;
+  let A=mx-x1,B=my-y1,C=x2-x1,D=y2-y1;
+  let dot=A*C+B*D;
+  let len=C*C+D*D;
+  let param=dot/len;
+  if(param<0||param>1) return false;
+  let xx=x1+param*C;
+  let yy=y1+param*D;
+  return distance(mx,my,xx,yy)<threshold/scale;
 }
 
-function trimAtPoint(p){
-    let line=findLineNear(p);
-    if(!line) return;
-
-    entities=entities.filter(e=>e!==line);
-    redraw();
+function lineIntersection(l1,l2){
+  let {x1,y1,x2,y2}=l1;
+  let x3=l2.x1,y3=l2.y1,x4=l2.x2,y4=l2.y2;
+  let denom=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
+  if(denom===0) return null;
+  let px=((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4))/denom;
+  let py=((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4))/denom;
+  return {x:px,y:py};
 }
 
-function deleteSelected(){
-    if(!selected) return;
-    entities=entities.filter(e=>e!==selected);
-    selected=null;
-    redraw();
-}
+/* ================= CLEAR ================= */
 
-function saveProject(){
-    localStorage.setItem("prcad",JSON.stringify(entities));
-    alert("Saved");
+function clearCanvas(){
+  layers.forEach(l=>l.edges=[]);
+  redraw();
 }
-
-function loadProject(){
-    let data=localStorage.getItem("prcad");
-    if(data){
-        entities=JSON.parse(data);
-        redraw();
-    }
-}
-
-canvas.addEventListener("wheel", e=>{
-    e.preventDefault();
-    const zoom=e.deltaY<0?1.1:0.9;
-    scale*=zoom;
-    redraw();
-});
 
 redraw();
-
 </script>
+
 </body>
 </html>
